@@ -37,6 +37,26 @@ class FarmBotCV:
         self.enable_remove_grass = config.getboolean('self', 'enable_remove_grass')
         self.enable_watering = config.getboolean('self', 'enable_watering')
 
+        # 获取各项阈值参数
+        self.help_remove_bugs_frame_threshold = config.getfloat('threshold', 'help_remove_bugs_frame')
+        self.help_remove_grass_frame_threshold = config.getfloat('threshold', 'help_remove_grass_frame')
+        self.help_watering_frame_threshold = config.getfloat('threshold', 'help_watering_frame')
+        self.can_steal_frame_threshold = config.getfloat('threshold', 'can_steal_frame')
+        self.close_x_frame_threshold = config.getfloat('threshold', 'close_x_frame')
+        self.go_home_frame_threshold = config.getfloat('threshold', 'go_home_frame')
+        self.steal_all_frame_threshold = config.getfloat('threshold', 'steal_all_frame')
+        self.friend_icon_frame_threshold = config.getfloat('threshold', 'friend_icon_frame')
+        self.welcome_back_frame_threshold = config.getfloat('threshold', 'welcome_back_frame')
+        self.harvest_all_frame_threshold = config.getfloat('threshold', 'harvest_all_frame')
+        self.harvest_one_frame_threshold = config.getfloat('threshold', 'harvest_one_frame')
+        self.get_new_seed_frame_threshold = config.getfloat('threshold', 'get_new_seed_frame')
+        self.level_up_frame_threshold = config.getfloat('threshold', 'level_up_frame')
+        self.watering_all_frame_threshold = config.getfloat('threshold', 'watering_all_frame')
+        self.remove_all_grass_frame_threshold = config.getfloat('threshold', 'remove_all_grass_frame')
+        self.remove_all_bugs_frame_threshold = config.getfloat('threshold', 'remove_all_bugs_frame')
+        self.reconnect_frame_threshold = config.getfloat('threshold', 'reconnect_frame')
+
+
         self.check_interval = check_interval
         self.running = True
         self.pause_status = False
@@ -321,7 +341,7 @@ class FarmBotCV:
         Returns:
             bool: 是否可以帮忙除草
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.help_remove_grass, threshold=0.6)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.help_remove_grass, threshold=self.help_remove_grass_frame_threshold)
         if match_result is not None:        # 可以帮忙除草
             self.logger.debug(f"检测到【可帮忙除草】图标，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将点击位置偏移到【拜访】区域
@@ -343,7 +363,7 @@ class FarmBotCV:
         Returns:
             bool: 是否可以帮忙浇水
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.help_watering, threshold=0.6)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.help_watering, threshold=self.help_watering_frame_threshold)
         if match_result is not None:        # 可以帮忙浇水
             self.logger.debug(f"检测到【可帮忙浇水】图标，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将点击位置偏移到【拜访】区域
@@ -365,7 +385,7 @@ class FarmBotCV:
         Returns:
             bool: 是否点击了关闭按钮
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.close_x_frame, threshold=0.6)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.close_x_frame, threshold=self.close_x_frame_threshold)
         if match_result is not None:        # 点击了关闭按钮
             self.logger.debug(f"检测到【关闭】按钮，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
@@ -384,7 +404,7 @@ class FarmBotCV:
         Returns:
             bool: 是否有一键回家的图标
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.go_home_frame, threshold=0.5)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.go_home_frame, threshold=self.go_home_frame_threshold)
         if match_result is not None:        # 有一键回家图标
             self.logger.debug(f"检测到【一键回家】图标，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
@@ -402,7 +422,7 @@ class FarmBotCV:
         Returns:
             bool: 是否有一键偷取的图标
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.steal_all_frame, threshold=0.5)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.steal_all_frame, threshold=self.steal_all_frame_threshold)
         if match_result is not None:        # 有一键偷取图标
             self.logger.info(f"检测到【一键偷取】图标，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
@@ -420,7 +440,7 @@ class FarmBotCV:
         Returns:
             bool: 是否点击了偷菜图标
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.can_steal_frame, threshold=0.6)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.can_steal_frame, threshold=self.can_steal_frame_threshold)
         if match_result is not None:        # 点击了偷菜图标
             self.logger.debug(f"检测到【可以偷的图标】，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将点击位置偏移到【拜访】区域
@@ -442,7 +462,7 @@ class FarmBotCV:
         Returns:
             bool: 是否点击了好友图标
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.friend_icon_frame, threshold=0.47)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.friend_icon_frame, threshold=self.friend_icon_frame_threshold)
         if match_result is not None:        # 点击了好友图标
             self.logger.debug(f"检测到【好友图标】，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
@@ -461,7 +481,7 @@ class FarmBotCV:
         Returns:
             bool: 是否检测到并处理了欢迎弹窗
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.welcome_back_frame, threshold=0.65)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.welcome_back_frame, threshold=self.welcome_back_frame_threshold)
         if match_result is not None:        # 有欢迎回来界面
             self.logger.info(f"检测到【欢迎回来】界面，准备点击 X 按钮, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             center_x = match_result['center'][0]
@@ -484,7 +504,7 @@ class FarmBotCV:
         Returns:
             bool: 是否有一键收获的按钮
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.harvest_all_frame)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.harvest_all_frame, threshold=self.harvest_all_frame_threshold)
         if match_result is not None:        # 有一键收获按钮
             self.logger.info(f"检测到【一键收获】按钮,准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
@@ -502,7 +522,7 @@ class FarmBotCV:
         Returns:
             bool: 检查是否有单个收获按钮
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.harvest_one_frame, threshold=0.4)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.harvest_one_frame, threshold=self.harvest_one_frame_threshold)
         if match_result is not None:        # 有单个收获按钮
             self.logger.info(f"检测到【单个收获】按钮,准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
@@ -519,7 +539,7 @@ class FarmBotCV:
         Returns:
             bool: 是否有获取新种子的按钮
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.get_new_seed_frame)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.get_new_seed_frame, threshold=self.get_new_seed_frame_threshold)
         if match_result is not None:        # 有获取新种子的按钮
             self.logger.info(f"检测到【获得新种子】的提示窗口,准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             self.now_scene = "home"     # 只有在自家地里才会弹出这个窗口
@@ -537,7 +557,7 @@ class FarmBotCV:
         Returns:
             bool: 是否有升级提示窗口
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.level_up_frame, threshold=0.6)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.level_up_frame, threshold=self.level_up_frame_threshold)
         if match_result is not None:        # 有升级提示窗口
             self.logger.info(f"检测到【升级提示】窗口,准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
@@ -556,7 +576,7 @@ class FarmBotCV:
         Returns:
             bool: 是否有一键浇水按钮
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.watering_all_frame)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.watering_all_frame, threshold=self.watering_all_frame_threshold)
         if match_result is not None:        # 有一键浇水按钮
             self.logger.info(f"检测到【一键浇水】按钮,准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
@@ -573,7 +593,7 @@ class FarmBotCV:
         Returns:
             bool: 是否有一键除草按钮
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.remove_all_grass_frame)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.remove_all_grass_frame, threshold=self.remove_all_grass_frame_threshold)
         if match_result is not None:        # 有一键除草按钮
             self.logger.info(f"检测到【一键除草】按钮,准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
@@ -590,7 +610,7 @@ class FarmBotCV:
         Returns:
             bool: 是否有一键除虫按钮
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.remove_all_bugs_frame, threshold=0.5)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.remove_all_bugs_frame, threshold=self.remove_all_bugs_frame_threshold)
         if match_result is not None:        # 有一键除虫按钮
             self.logger.info(f"检测到【一键除虫】按钮,准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
@@ -607,7 +627,7 @@ class FarmBotCV:
         Returns:
             bool: 是否有重新登录按钮
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.reconnect_frame, threshold=0.5)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.reconnect_frame, threshold=self.reconnect_frame_threshold)
         if match_result is not None:        # 有重新登录按钮
             self.logger.info(f"检测到【重新登录】按钮,准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
