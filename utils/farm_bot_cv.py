@@ -3,12 +3,15 @@ import keyboard
 import time
 import pyautogui
 import logging
+import configparser
+import random
 from utils.cv_match import cvMatch
 from utils.screen_capture import ScreenCapture
 
 
 class FarmBotCV:
-    def __init__(self, check_interval = 3, debug_mode = False):
+    def __init__(self, check_interval = 3, debug_mode = False, config: configparser.ConfigParser = None):
+        self.debug_mode = debug_mode
         self.logger = logging.getLogger(__name__)
         if debug_mode == True:
             self.logger.setLevel(logging.DEBUG)
@@ -19,12 +22,30 @@ class FarmBotCV:
         console_handler.setFormatter(formatter)
         self.logger.addHandler(console_handler)
         
+        if config is None:
+            assert False, f"配置文件缺失，请检查是否传入配置文件"
+        
+        # 获取全局配置
+        self.config = config
+        self.enable_process_self = config.getboolean('bot', 'enable_process_self')
+        self.enable_process_friend = config.getboolean('bot', 'enable_process_friend')
+        self.friend_colddown_time = config.getint('bot', 'friend_colddown_time')
+
+        # 获取自己农场的功能配置
+        self.enable_harvest = config.getboolean('self', 'enable_harvest')
+        self.enable_remove_bug = config.getboolean('self', 'enable_remove_bug')
+        self.enable_remove_grass = config.getboolean('self', 'enable_remove_grass')
+        self.enable_watering = config.getboolean('self', 'enable_watering')
+
         self.check_interval = check_interval
         self.running = True
         self.pause_status = False
         self.now_scene = "home"     # 判断当前所在的场景
         self.screen_capture = ScreenCapture("QQ经典农场")
         self.cv_match = cvMatch()
+        self.is_friend_has_task = True
+        self.start_friend_check_colddown_time = None
+
         
         # 加载匹配图片资源
         self.welcome_back_frame = cv2.imread(r"assert\datasets\icons\welcome_back.jpg")
@@ -49,16 +70,20 @@ class FarmBotCV:
         
     def start(self):
         # 注册退出热键
-        keyboard.add_hotkey('ctrl+s', self.stop)
+        keyboard.add_hotkey('ctrl+c', self.stop)
         keyboard.add_hotkey('p', self.pause)
 
         while self.running:
             # 主循环逻辑
             if not self.pause_status:
-                self.logger.info("======================开始新的一轮检查======================")
+                self.logger.info("======================机器人正在执行一轮操作======================")
                 self.run_cycle()
-                self.logger.info(f"======================本轮巡查完毕======================")
-            time.sleep(self.check_interval)
+                self.logger.info(f"======================本轮操作执行完毕======================\r\n")
+            if self.debug_mode == True:
+                self.logger.debug(f"********Debug模式已开启，按[ctrl+s]键后进入下一轮操作********")
+                keyboard.wait('ctrl+s')
+            else:
+                time.sleep(self.check_interval)
             
     def pause(self):
         if self.pause_status == False:
@@ -71,33 +96,61 @@ class FarmBotCV:
     def stop(self):
         self.logger.info("接收到停止信号，机器人已停止退出")
         self.running = False
+        exit()
     
 
     def run_cycle(self):
         # 循环处理事件
         if self.screen_capture.check_window_exist():
-            self.logger.info("正在获取游戏画面")
+            self.logger.debug("正在获取游戏画面")
             game_frame = self.screen_capture.get_window_frame()     # 获取游戏画面
             if game_frame is None:
                 self.logger.error(f"游戏画面截取失败，请检查游戏是否开启并确保窗口在前台")
                 return
-            self.logger.info("游戏画面获取成功,开始处理")
+            self.logger.debug("游戏画面获取成功,开始处理")
+            # 对游戏窗口大小进行检测（当前版本下若窗口被调的太小会导致匹配不到甚至报错）
+            # TODO 优化获取游戏画面的方式
+            game_frame_shape = game_frame.shape
+            self.logger.debug(f"游戏当前窗口尺寸：{game_frame_shape}")
+            game_frame_w, game_frame_h = game_frame_shape[1], game_frame_shape[0]
+            if game_frame_w < 400 or game_frame_h < 800:
+                self.logger.error(f"游戏窗口尺寸过小，请调整窗口大小,当前窗口尺寸：{game_frame_w}x{game_frame_h}，至少需满足: 400x800")
+                return
 
             # 优先处理自家农场事件
             if self.now_scene == "home":
-                if self.process_self_farm(game_frame):
-                    return
+                if self.enable_process_self:
+                    self.logger.info(f"正在检查自家农场是否有可执行的任务")
+                    if self.process_self_farm(game_frame):
+                        self.is_self_has_task = True
+                        return
+                    else:
+                        self.logger.info("家里已无可执行的任务，下一轮巡查将尝试查看其它好友家可执行的任务")
+                        self.now_scene = "friend"
+                        
                 else:
-                    self.logger.info("家里已无可执行的任务，下一轮巡查将尝试查看其它好友家可执行的任务")
+                    self.logger.warning("机器人已被配置为【不处理自家农场】")
                     self.now_scene = "friend"
             else:       # 自家地里没事干的时候尝试去偷菜
-                if self.process_friend_farm(game_frame):
-                    return
+                if self.enable_process_friend:
+                    if self.is_friend_has_task == False and time.time() - self.start_friend_check_colddown_time < self.friend_colddown_time:
+                        self.logger.info(f"上次检查好友农场无任务后, 冷却时间还未达到{self.friend_colddown_time}秒,当前已过去{int(time.time() - self.start_friend_check_colddown_time)}秒,本轮巡检暂不操作")
+                        self.now_scene = "home"
+                        return
+                    self.logger.info(f"正在检查好友农场是否有可执行的任务")
+                    if self.process_friend_farm(game_frame):
+                        self.is_friend_has_task = True
+                        return
+                    else:
+                        self.logger.info("好友农场已无可执行的任务，下一轮巡查将回家查看是否有可执行的任务")
+                        self.now_scene = "home"
+                        self.is_friend_has_task = False
+                        self.start_friend_check_colddown_time = time.time()   # 记录开始冷却时间
+                        
                 else:
-                    self.logger.info("好友农场已无可执行的任务，下一轮巡查将回家查看是否有可执行的任务")
+                    self.logger.warning("机器人已被配置为【不处理好友农场】")
                     self.now_scene = "home"
 
-            # self.logger.info("无可执行的任务，继续等待下一轮检查")
         else:
             self.logger.warning("未找到游戏窗口，请检查游戏是否开启并确保窗口在前台")
 
@@ -113,25 +166,43 @@ class FarmBotCV:
         # 检测欢迎回来界面
         if self.check_welcome_back(game_frame):
             return True
-        # 检测一键收获按钮
-        if self.check_harvest_all(game_frame):
+        # 检测其它如更新通知等弹窗
+        if self.check_close_x_icon(game_frame):
             return True
-        # 检测单个收获按钮
-        if self.check_harvest_one(game_frame):
-            return True
+        if self.enable_harvest:
+            # 检测一键收获按钮
+            if self.check_harvest_all(game_frame):
+                return True
+            # 检测单个收获按钮
+            if self.check_harvest_one(game_frame):
+                return True
+        else:
+            self.logger.warning("机器人已被配置为【不执行收获】")
         # 检测获得新种子页面
         if self.check_get_new_seed(game_frame):
             return True
         # 检测升级提示窗口
         if self.check_level_up(game_frame):
             return True
-        # 检测一键浇水按钮
-        if self.check_watering_all(game_frame):
-            return True
+        if self.enable_watering:
+            # 检测一键浇水按钮
+            if self.check_watering_all(game_frame):
+                return True
+        else:
+            self.logger.warning("机器人已被配置为【不执行浇水】")
         # 检测一键除草按钮
-        if self.check_remove_all_grass(game_frame):
-            return True
-        
+        if self.enable_remove_grass:
+            # 检测一键除草按钮
+            if self.check_remove_all_grass(game_frame):
+                return True
+        else:
+            self.logger.warning("机器人已被配置为【不执行除草】")
+        if self.enable_remove_bug:
+            # 检测一键除虫按钮
+            if self.check_remove_all_bugs(game_frame):
+                return True
+        else:
+            self.logger.warning("机器人已被配置为【不执行除虫】")
         return False
 
     def process_friend_farm(self, game_frame):
@@ -209,13 +280,18 @@ class FarmBotCV:
     def click_at_position(self, screen_coord, duration=0.1):
         '''
         在指定屏幕坐标位置执行鼠标点击
+        新增随机值机制,在目标坐标点基础上随机向四周偏移少量像素
+        避免经常点击同一坐标触发检测
         
         Args:
             screen_coord: 屏幕绝对坐标 (x, y)
             duration: 鼠标按下持续时间，默认 0.1 秒
         '''
-        pyautogui.click(screen_coord[0], screen_coord[1], duration=duration)
-        self.logger.info(f"已模拟点击坐标：{screen_coord}")
+        # 加入随机值机制,在目标坐标点基础上随机向四周偏移不超过3像素
+        random_x_px = random.randint(-3, 3)
+        random_y_px = random.randint(-3, 3)
+        pyautogui.click(screen_coord[0] + random_x_px, screen_coord[1] + random_y_px, duration=duration)
+        self.logger.debug(f"原坐标：{screen_coord}, 随机偏移：{random_x_px}, {random_y_px}, 最终点击坐标：{screen_coord[0] + random_x_px}, {screen_coord[1] + random_y_px}")
 
     def check_help_remove_bugs(self, game_frame):
         '''
@@ -225,7 +301,7 @@ class FarmBotCV:
         '''
         match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.help_remove_bugs, threshold=0.6)
         if match_result is not None:        # 可以帮忙除虫
-            self.logger.info(f"检测到【可帮忙除虫】图标，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
+            self.logger.debug(f"检测到【可帮忙除虫】图标，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将点击位置偏移到【拜访】区域
             center_x = match_result['center'][0]
             center_y = match_result['center'][1]
@@ -247,7 +323,7 @@ class FarmBotCV:
         '''
         match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.help_remove_grass, threshold=0.6)
         if match_result is not None:        # 可以帮忙除草
-            self.logger.info(f"检测到【可帮忙除草】图标，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
+            self.logger.debug(f"检测到【可帮忙除草】图标，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将点击位置偏移到【拜访】区域
             center_x = match_result['center'][0]
             center_y = match_result['center'][1]
@@ -269,7 +345,7 @@ class FarmBotCV:
         '''
         match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.help_watering, threshold=0.6)
         if match_result is not None:        # 可以帮忙浇水
-            self.logger.info(f"检测到【可帮忙浇水】图标，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
+            self.logger.debug(f"检测到【可帮忙浇水】图标，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将点击位置偏移到【拜访】区域
             center_x = match_result['center'][0]
             center_y = match_result['center'][1]
@@ -289,9 +365,9 @@ class FarmBotCV:
         Returns:
             bool: 是否点击了关闭按钮
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.close_x_frame, threshold=0.5)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.close_x_frame, threshold=0.6)
         if match_result is not None:        # 点击了关闭按钮
-            self.logger.info(f"检测到【关闭】按钮，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
+            self.logger.debug(f"检测到【关闭】按钮，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
             screen_center = self.convert_to_screen_coordinate(match_result['center'])
             self.click_at_position(screen_center)
@@ -310,7 +386,7 @@ class FarmBotCV:
         '''
         match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.go_home_frame, threshold=0.5)
         if match_result is not None:        # 有一键回家图标
-            self.logger.info(f"检测到【一键回家】图标，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
+            self.logger.debug(f"检测到【一键回家】图标，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
             screen_center = self.convert_to_screen_coordinate(match_result['center'])
             self.click_at_position(screen_center)
@@ -346,7 +422,7 @@ class FarmBotCV:
         '''
         match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.can_steal_frame, threshold=0.6)
         if match_result is not None:        # 点击了偷菜图标
-            self.logger.info(f"检测到【可以偷的图标】，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
+            self.logger.debug(f"检测到【可以偷的图标】，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将点击位置偏移到【拜访】区域
             center_x = match_result['center'][0]
             center_y = match_result['center'][1]
@@ -368,7 +444,7 @@ class FarmBotCV:
         '''
         match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.friend_icon_frame, threshold=0.47)
         if match_result is not None:        # 点击了好友图标
-            self.logger.info(f"检测到【好友图标】，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
+            self.logger.debug(f"检测到【好友图标】，准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
             screen_center = self.convert_to_screen_coordinate(match_result['center'])
             self.click_at_position(screen_center)
@@ -426,7 +502,7 @@ class FarmBotCV:
         Returns:
             bool: 检查是否有单个收获按钮
         '''
-        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.harvest_one_frame)
+        match_result, max_val, threshold = self.cv_match.match_template(game_frame, self.harvest_one_frame, threshold=0.4)
         if match_result is not None:        # 有单个收获按钮
             self.logger.info(f"检测到【单个收获】按钮,准备点击, 最高置信度：{max_val:.4f} (阈值：{threshold})")
             # 将局部坐标转换为屏幕坐标
