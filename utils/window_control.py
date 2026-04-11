@@ -1,6 +1,6 @@
 import ctypes
 import time
-from ctypes import wintypes
+from utils.window_session import WindowSession
 
 # Windows API 常量
 WM_LBUTTONDOWN = 0x0201
@@ -10,7 +10,7 @@ MK_LBUTTON = 0x0001
 class WindowControl:
     """Windows 窗口后台控制类，支持后台静默点击"""
     
-    def __init__(self, window_title):
+    def __init__(self, window_title, window_session=None):
         """
         初始化窗口控制器
         
@@ -18,6 +18,7 @@ class WindowControl:
             window_title: 窗口标题
         """
         self.window_title = window_title
+        self.window_session = window_session or WindowSession(window_title)
         self.hwnd = None
     
     def find_window(self):
@@ -28,7 +29,7 @@ class WindowControl:
             bool: 是否找到窗口
         """
         try:
-            self.hwnd = ctypes.windll.user32.FindWindowW(None, self.window_title)
+            self.hwnd = self.window_session.get_hwnd()
             if self.hwnd:
                 return True
             else:
@@ -39,9 +40,11 @@ class WindowControl:
     
     def is_window_visible(self):
         """检查窗口是否可见"""
-        if not self.hwnd:
+        hwnd = self.window_session.get_hwnd()
+        if not hwnd:
             return False
-        return ctypes.windll.user32.IsWindowVisible(self.hwnd)
+        self.hwnd = hwnd
+        return ctypes.windll.user32.IsWindowVisible(hwnd)
     
     def get_window_rect(self):
         """
@@ -50,12 +53,7 @@ class WindowControl:
         Returns:
             tuple: (left, top, right, bottom) 或 None
         """
-        if not self.hwnd:
-            return None
-        
-        rect = ctypes.wintypes.RECT()
-        ctypes.windll.user32.GetWindowRect(self.hwnd, ctypes.byref(rect))
-        return (rect.left, rect.top, rect.right, rect.bottom)
+        return self.window_session.get_window_rect()
     
     def click(self, x, y, duration=0.1):
         """
@@ -69,17 +67,18 @@ class WindowControl:
         Returns:
             bool: 是否点击成功
         """
-        if not self.hwnd:
-            if not self.find_window():
-                print("未找到窗口")
-                return False
+        if not self.find_window():
+            print("未找到窗口")
+            return False
         
         # 将屏幕坐标转换为窗口客户区坐标
-        client_point = ctypes.wintypes.POINT(x, y)
-        ctypes.windll.user32.ScreenToClient(self.hwnd, ctypes.byref(client_point))
+        client_coord = self.window_session.screen_to_client(x, y)
+        if client_coord is None:
+            return False
+        client_x, client_y = client_coord
         
         # 构造 LPARAM 参数 (x, y)
-        lparam = (client_point.y << 16) | (client_point.x & 0xFFFF)
+        lparam = (client_y << 16) | (client_x & 0xFFFF)
         
         # 发送鼠标按下消息
         ctypes.windll.user32.PostMessageW(self.hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lparam)
