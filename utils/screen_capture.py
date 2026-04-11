@@ -6,40 +6,39 @@ import numpy as np
 import screeninfo
 import win32gui
 import win32ui
+from utils.window_session import WindowSession
 
 
 PW_RENDERFULLCONTENT = 0x00000002
 
 
 class ScreenCapture:
-    def __init__(self, window_title):
+    def __init__(self, window_title, window_session=None):
         self.window_title = window_title
+        self.window_session = window_session or WindowSession(window_title)
         self.camera = None
         self.current_monitor_idx = None
-        self.window_rect = None
 
     def __del__(self):
         """析构函数，释放 camera 资源"""
         if hasattr(self, "camera") and self.camera is not None:
             del self.camera
 
-    def _find_window_by_title(self, window_title):
-        return win32gui.FindWindow(None, window_title)
-
     def _get_window_rect(self, hwnd):
-        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-        width = right - left
-        height = bottom - top
+        rect = self.window_session.get_window_rect()
+        if rect is None:
+            raise ValueError("无效的窗口句柄")
+        left, top, right, bottom = rect
+        width, height = self.window_session.get_window_size()
         if width <= 0 or height <= 0:
             raise ValueError("窗口尺寸无效")
-        self.window_rect = (left, top, right, bottom)
         return left, top, right, bottom, width, height
 
     def _capture_window_printwindow(self, hwnd):
         """优先使用 PrintWindow 后台抓取窗口内容，避免被其他窗口遮挡。"""
         if not hwnd or not win32gui.IsWindow(hwnd):
             raise ValueError("无效的窗口句柄")
-        if win32gui.IsIconic(hwnd):
+        if self.window_session.is_minimized():
             return None
 
         left, top, right, bottom, width, height = self._get_window_rect(hwnd)
@@ -119,7 +118,7 @@ class ScreenCapture:
         return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
     def get_window_frame(self):
-        hwnd = self._find_window_by_title(self.window_title)
+        hwnd = self.window_session.get_hwnd()
         if not hwnd:
             return None
 
@@ -130,16 +129,10 @@ class ScreenCapture:
 
     def get_window_position(self):
         """获取窗口左上角在屏幕上的坐标"""
-        if self.window_rect:
-            return (self.window_rect[0], self.window_rect[1])
-        hwnd = self._find_window_by_title(self.window_title)
-        if hwnd:
-            left, top, right, bottom, _, _ = self._get_window_rect(hwnd)
-            return (left, top)
-        return None
+        return self.window_session.get_window_position()
 
     def check_window_exist(self):
-        return self._find_window_by_title(self.window_title) != 0
+        return self.window_session.exists()
 
 
 if __name__ == "__main__":

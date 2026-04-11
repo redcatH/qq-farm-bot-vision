@@ -9,6 +9,7 @@ import random
 from utils.cv_match import cvMatch
 from utils.screen_capture import ScreenCapture
 from utils.window_control import WindowControl
+from utils.window_session import WindowSession
 
 
 class FarmBotCV:
@@ -83,9 +84,10 @@ class FarmBotCV:
         self.running = True
         self.pause_status = False
         self.now_scene = "home"     # 判断当前所在的场景
-        self.screen_capture = ScreenCapture("QQ经典农场")
+        self.window_session = WindowSession("QQ经典农场")
+        self.screen_capture = ScreenCapture("QQ经典农场", self.window_session)
         if self.enable_silence_click:
-            self.window_control = WindowControl("QQ经典农场")
+            self.window_control = WindowControl("QQ经典农场", self.window_session)
         else:
             self.window_control = None
         self.cv_match = cvMatch()
