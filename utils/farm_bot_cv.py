@@ -210,6 +210,13 @@ class FarmBotCV:
                 if self.check_go_home_icon(game_frame):
                     self.logger.warning("检测到仍在好友农场，已再次点击返回自己农场按钮")
                     self.now_scene = "home"
+                # 检查是否在商店等界面
+                if self.check_close_x_icon(game_frame):
+                    self.logger.warning("检测到在商店等界面，已再次点击返回自己农场按钮")
+                    self.now_scene = "home"
+                if self.check_return_farm(game_frame):
+                    self.logger.warning("检测到在商店等界面，已再次点击返回自己农场按钮")
+                    self.now_scene = "home"
             
             # 优先处理自家农场事件
             if self.now_scene == "home":
@@ -416,8 +423,11 @@ class FarmBotCV:
             else:
                 self.logger.info("当前配置不帮助好友除虫")
             # 没有好友任务，点击X返回
-            self.check_close_x_icon(game_frame)
-            return False
+            if self.check_close_x_icon(game_frame):
+                return False
+            # 可能只是在好友界面，先返回True
+            else:
+                return True
         
         
         # 在好友农场中的操作
@@ -927,7 +937,7 @@ class FarmBotCV:
         # 将局部坐标转换为屏幕坐标
         screen_center = self.convert_to_screen_coordinate((shop_x_pos,shop_y_pos))
         self.click_at_position(screen_center)
-        time.sleep(0.5)   # 等待商店页面加载
+        time.sleep(1)   # 等待商店页面加载
         # 进入商店页面后点击免费化肥按钮(453x854->128x401)
         free_button_x_pos = self.game_frame_w * 0.282
         free_button_y_pos = self.game_frame_h * 0.469
@@ -938,13 +948,13 @@ class FarmBotCV:
         blank_y_pos = self.game_frame_h * 0.07
         screen_center = self.convert_to_screen_coordinate((blank_x_pos,blank_y_pos))
         self.click_at_position(screen_center)
-        time.sleep(0.5)   # 等待空白处点击
+        time.sleep(1)   # 等待空白处点击
         # 点击返回农场按钮(453x854->49x142)
         return_button_x_pos = self.game_frame_w * 0.089
         return_button_y_pos = self.game_frame_h * 0.165
         screen_center = self.convert_to_screen_coordinate((return_button_x_pos,return_button_y_pos))
         self.click_at_position(screen_center)
-        time.sleep(0.5)   # 等待返回农场按钮点击
+        time.sleep(1)   # 等待返回农场按钮点击
         return True
 
 
