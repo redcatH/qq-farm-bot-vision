@@ -34,6 +34,10 @@ class FarmBotCV:
         self.enable_process_friend = config.getboolean('bot', 'enable_process_friend')
         self.friend_colddown_time = config.getint('bot', 'friend_colddown_time')
         self.enable_silence_click = config.getboolean('bot', 'enable_silence_click')
+        self.enable_hide_window = config.getboolean('bot', 'enable_hide_window', fallback=False)
+
+        if self.enable_hide_window and not self.enable_silence_click:
+            self.enable_silence_click = True
 
         # 获取自己农场的功能配置
         self.enable_harvest = config.getboolean('self', 'enable_harvest')
@@ -86,7 +90,7 @@ class FarmBotCV:
         self.now_scene = "home"     # 判断当前所在的场景
         self.window_session = WindowSession("QQ经典农场")
         self.screen_capture = ScreenCapture("QQ经典农场", self.window_session)
-        if self.enable_silence_click:
+        if self.enable_silence_click or self.enable_hide_window:
             self.window_control = WindowControl("QQ经典农场", self.window_session)
         else:
             self.window_control = None
@@ -146,9 +150,13 @@ class FarmBotCV:
             self.logger.warning("注意：【自动领取每日免费礼包】功能已被配置禁用")
         if not self.enable_plant_seed:
             self.logger.warning("注意：【自动种植】功能已被配置禁用")
+        if self.enable_hide_window:
+            self.logger.warning("注意：【隐藏窗口】功能已被配置启用")
         self.logger.info(f"【机器人操作间隔】已配置为 {self.check_interval} 秒")
         self.logger.info(f"【好友巡检间隔】已配置为 {self.friend_colddown_time} 秒")
         self.logger.info(f"【自动种植检查间隔】已配置为 {self.plant_seed_check_interval} 秒")
+
+        self.apply_window_visibility()
 
         
     def start(self):
@@ -179,7 +187,20 @@ class FarmBotCV:
     def stop(self):
         self.logger.info("接收到停止信号，机器人已停止退出")
         self.running = False
+        self.apply_window_visibility(False)
         exit()
+
+    def apply_window_visibility(self, hidden=None):
+        """根据当前配置隐藏或显示目标窗口。"""
+        if hidden is None:
+            hidden = self.enable_hide_window
+
+        if self.window_control is None:
+            return False
+
+        if hidden:
+            return self.window_control.hide_window()
+        return self.window_control.show_window()
     
 
     def run_cycle(self):

@@ -439,6 +439,13 @@ class FarmBotGUI:
             col3_frame, text="后台静默点击", variable=self.enable_silence_click_var,
             command=self.on_config_change)
         self.enable_silence_click_cb.grid(row=0, column=0, sticky=tk.W, pady=2)
+
+        self.enable_hide_window_var = tk.BooleanVar(
+            value=self.config.getboolean('bot', 'enable_hide_window', fallback=False))
+        self.enable_hide_window_cb = ttk.Checkbutton(
+            col3_frame, text="隐藏窗口（需后台点击）", variable=self.enable_hide_window_var,
+            command=self.on_config_change)
+        self.enable_hide_window_cb.grid(row=1, column=0, sticky=tk.W, pady=2)
         
         # ===== 功能开关区域 =====
         settings_frame = ttk.LabelFrame(main_frame, text="功能配置", padding="10")
@@ -661,6 +668,7 @@ class FarmBotGUI:
             self.config.set('bot', 'check_interval', str(check_interval))
             self.config.set('bot', 'friend_colddown_time', str(friend_colddown_time))
             self.config.set('self', 'plant_seed_check_interval', str(plant_seed_check_interval))
+            self.config.set('bot', 'enable_hide_window', str(self.enable_hide_window_var.get()))
             
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 self.config.write(f)
@@ -688,6 +696,9 @@ class FarmBotGUI:
             
             # 创建机器人实例
             self.bot = FarmBotCV(check_interval, debug_mode, self.config)
+
+            if self.bot.enable_hide_window and not self.enable_silence_click_var.get():
+                self.enable_silence_click_var.set(True)
             
             # 替换机器人的日志处理器
             for handler in self.bot.logger.handlers[:]:
@@ -737,6 +748,8 @@ class FarmBotGUI:
     
     def on_bot_stopped(self):
         """机器人停止后的处理"""
+        if self.bot:
+            self.bot.apply_window_visibility(False)
         self.start_btn.config(state=tk.NORMAL)
         self.pause_btn.config(state=tk.DISABLED)
         self.stop_btn.config(state=tk.DISABLED)
@@ -771,6 +784,7 @@ class FarmBotGUI:
         
         self.bot.running = False
         self.is_running = False
+        self.bot.apply_window_visibility(False)
         self.log_queue.put("正在停止机器人...")
         
         # 等待线程结束
@@ -812,13 +826,21 @@ class FarmBotGUI:
             
             # 更新全局配置
             self.bot.enable_silence_click = self.enable_silence_click_var.get()
+            self.bot.enable_hide_window = self.enable_hide_window_var.get()
+
+            if self.bot.enable_hide_window and not self.bot.enable_silence_click:
+                self.bot.enable_silence_click = True
+                self.enable_silence_click_var.set(True)
+                self.log_queue.put("已自动开启后台静默点击，以保证隐藏窗口时仍可后台操作")
             
             # 同步更新窗口控制
-            if self.bot.enable_silence_click and self.bot.window_control is None:
+            if (self.bot.enable_silence_click or self.bot.enable_hide_window) and self.bot.window_control is None:
                 from utils.window_control import WindowControl
                 self.bot.window_control = WindowControl("QQ经典农场", self.bot.window_session)
-            elif not self.bot.enable_silence_click and self.bot.window_control is not None:
+            elif not self.bot.enable_silence_click and not self.bot.enable_hide_window and self.bot.window_control is not None:
                 self.bot.window_control = None
+
+            self.bot.apply_window_visibility(self.bot.enable_hide_window)
             
             self.log_queue.put("配置已实时更新")
             
@@ -831,10 +853,14 @@ class FarmBotGUI:
     def save_config_to_file(self):
         """保存配置到文件"""
         try:
+            if self.enable_hide_window_var.get() and not self.enable_silence_click_var.get():
+                self.enable_silence_click_var.set(True)
+
             # 更新配置对象
             self.config.set('bot', 'enable_process_self', str(self.enable_process_self_var.get()))
             self.config.set('bot', 'enable_process_friend', str(self.enable_process_friend_var.get()))
             self.config.set('bot', 'enable_silence_click', str(self.enable_silence_click_var.get()))
+            self.config.set('bot', 'enable_hide_window', str(self.enable_hide_window_var.get()))
             
             self.config.set('self', 'enable_harvest', str(self.enable_harvest_var.get()))
             self.config.set('self', 'enable_watering', str(self.enable_watering_var.get()))

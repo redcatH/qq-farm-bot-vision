@@ -1,11 +1,24 @@
 import ctypes
 import time
+import win32gui
 from utils.window_session import WindowSession
 
 # Windows API 常量
 WM_LBUTTONDOWN = 0x0201
 WM_LBUTTONUP = 0x0202
 MK_LBUTTON = 0x0001
+SW_HIDE = 0
+SW_SHOW = 5
+HIDDEN_OFFSET_X = 50000
+HIDDEN_OFFSET_Y = 50000
+GWL_EXSTYLE = -20
+WS_EX_TOOLWINDOW = 0x00000080
+WS_EX_APPWINDOW = 0x00040000
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_NOZORDER = 0x0004
+SWP_NOACTIVATE = 0x0010
+SWP_FRAMECHANGED = 0x0020
 
 class WindowControl:
     """Windows 窗口后台控制类，支持后台静默点击"""
@@ -20,6 +33,35 @@ class WindowControl:
         self.window_title = window_title
         self.window_session = window_session or WindowSession(window_title)
         self.hwnd = None
+        self._restored_rect = None
+        self._original_exstyle = None
+
+    def _set_taskbar_visible(self, visible):
+        """切换任务栏可见性，不改变窗口句柄。"""
+        if not self.find_window():
+            return False
+
+        exstyle = ctypes.windll.user32.GetWindowLongW(self.hwnd, GWL_EXSTYLE)
+        if self._original_exstyle is None:
+            self._original_exstyle = exstyle
+
+        if visible:
+            new_exstyle = self._original_exstyle
+        else:
+            new_exstyle = (exstyle | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
+
+        if new_exstyle != exstyle:
+            ctypes.windll.user32.SetWindowLongW(self.hwnd, GWL_EXSTYLE, new_exstyle)
+            ctypes.windll.user32.SetWindowPos(
+                self.hwnd,
+                0,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            )
+        return True
     
     def find_window(self):
         """
@@ -101,3 +143,47 @@ class WindowControl:
         self.click(x, y, duration)
         time.sleep(0.1)
         self.click(x, y, duration)
+
+    def hide_window(self):
+        """把窗口移出可视区域，但保留句柄以便继续后台截图和点击。"""
+        if not self.find_window():
+            return False
+
+        rect = self.window_session.get_window_rect()
+        if rect is None:
+            return False
+
+        self._restored_rect = rect
+        left, top, right, bottom = rect
+        width = right - left
+        height = bottom - top
+        if width <= 0 or height <= 0:
+            return False
+
+        self._set_taskbar_visible(False)
+        ctypes.windll.user32.ShowWindow(self.hwnd, SW_SHOW)
+        return bool(win32gui.MoveWindow(self.hwnd, HIDDEN_OFFSET_X, HIDDEN_OFFSET_Y, width, height, True))
+
+    def show_window(self):
+        """把窗口恢复到原来的位置。"""
+        if not self.find_window():
+            return False
+
+        self._set_taskbar_visible(True)
+
+        if self._restored_rect is not None:
+            left, top, right, bottom = self._restored_rect
+            width = right - left
+            height = bottom - top
+            if width > 0 and height > 0:
+                result = win32gui.MoveWindow(self.hwnd, left, top, width, height, True)
+                ctypes.windll.user32.ShowWindow(self.hwnd, SW_SHOW)
+                return bool(result)
+
+        return bool(ctypes.windll.user32.ShowWindow(self.hwnd, SW_SHOW))
+
+    def set_window_hidden(self, hidden):
+        """根据开关切换窗口可见性。"""
+        if hidden:
+            return self.hide_window()
+        return self.show_window()
